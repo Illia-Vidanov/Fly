@@ -1,0 +1,181 @@
+{
+    "version": 1,
+    "name": "InputSystem",
+    "maps": [
+        {
+            "name": "Gameplay",
+            "id": "69e22de1-595d-4951-a339-50249b0d7ae0",
+            "actions": [
+                {
+                    "name": "pitch",
+                    "type": "Value",
+                    "id": "b21681a3-3f1f-4096-a747-570abf38e36a",
+                    "expectedControlType": "Double",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "yaw",
+                    "type": "Value",
+                    "id": "7f2fa6ea-694f-4eab-87dd-ad8ccb75358f",
+                    "expectedControlType": "Double",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "roll",
+                    "type": "Value",
+                    "id": "b6ba1183-5323-49ce-a69c-83e27fb218c2",
+                    "expectedControlType": "Double",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Restart",
+                    "type": "Button",
+                    "id": "0954a076-426e-4ba0-b34a-b7fb74d81f34",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Enable Debug Text",
+                    "type": "Button",
+                    "id": "70374d73-c0ae-4f8d-bb43-a292c7889a31",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "1D Axis",
+                    "id": "122d78f7-2600-44e6-94a5-7ac995a2a79e",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "pitch",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "04d69884-622a-4879-a60a-fabba88eac1a",
+                    "path": "<Keyboard>/s",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "pitch",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "10ef3532-fca3-4696-bc09-0686bbff3094",
+                    "path": "<Keyboard>/w",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "pitch",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "1D Axis",
+                    "id": "1921eaa8-0445-48e7-9cb4-c06257357057",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "yaw",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "59587858-982f-4aa5-b4ed-7bfd406ade5f",
+                    "path": "<Keyboard>/a",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "yaw",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "b3f9306d-fda6-42c5-8e2f-7a5baa635fa8",
+                    "path": "<Keyboard>/d",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "yaw",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "1D Axis",
+                    "id": "63c8cbac-489a-4bcd-bcc6-0f31edeb2558",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "roll",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "6d69d31b-b854-4cb9-bd46-f30c3e5480cb",
+                    "path": "<Keyboard>/q",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "roll",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "d93bd632-b18c-44da-a04b-e38e2fbad485",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "roll",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "",
+                    "id": "9d47d29e-122f-4606-929b-7c834c80815a",
+                    "path": "<Keyboard>/r",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Restart",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "fd7aab59-3c73-4e69-9c61-caf8c1e71e48",
+                    "path": "<Keyboard>/leftBracket",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Enable Debug Text",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
