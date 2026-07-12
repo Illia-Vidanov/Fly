@@ -10,37 +10,43 @@ public class WorldGenerator : MonoBehaviour
   [SerializeField] private int hexagon_size_;
   [SerializeField] private float hexagon_point_distance_;
   [SerializeField] private Transform start_position_;
+  [SerializeField] private int fraction_decimals_;
 
   [Header("Debug")]
   [SerializeField] private GameObject debug_point_;
   [SerializeField] private MeshFilter mesh_filter_;
+
+  private HashSet<Tuple<Vector3Int, Vector3Int>> debug_lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparer());
   
   // privates
 
   private System.Random rng_;
-
   private List<Vector3> verts_ = new List<Vector3>();
   // For future me. I use HashSet here to not to deal with collisions. But it might be worth performance-wise to use list idk.
-  private Dictionary<Vector3, HashSet<Vector3>> large_vertex_neighbors_ = new Dictionary<Vector3, HashSet<Vector3>>();
-  private HashSet<Tuple<Vector3, Vector3>> lines_ = new HashSet<Tuple<Vector3, Vector3>>(new PointComparer());
-  private List<Tuple<Vector3, Vector3>> removed_lines_ = new List<Tuple<Vector3, Vector3>>();
+  private Dictionary<Vector3Int, HashSet<Vector3Int>> large_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
+  private HashSet<Tuple<Vector3Int, Vector3Int>> lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparer());
+  private List<Tuple<Vector3Int, Vector3Int>> removed_lines_ = new List<Tuple<Vector3Int, Vector3Int>>();
+  private Dictionary<Vector3Int, HashSet<Vector3Int>> small_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
 
   private Vector3[] directions_;
   private Vector3[] steps_;
   private float min_edge_vertex_distance_sqr_;
+  private float max_edge_vertex_distance_sqr_;
+  private float fraction_decimals_power_;
 
   // constants
 
   private const int kHexagonSides = 6;
+  private Vector3Int kNoCommonNeighboor = new Vector3Int(int.MaxValue, int.MaxValue, int.MaxValue);
 
-  private class PointComparer : IEqualityComparer<Tuple<Vector3, Vector3>>
+  private class LineComparer : IEqualityComparer<Tuple<Vector3Int, Vector3Int>>
   {
-    bool IEqualityComparer<Tuple<Vector3, Vector3>>.Equals(Tuple<Vector3, Vector3> x, Tuple<Vector3, Vector3> y)
+    bool IEqualityComparer<Tuple<Vector3Int, Vector3Int>>.Equals(Tuple<Vector3Int, Vector3Int> x, Tuple<Vector3Int, Vector3Int> y)
     {
       return (x.Item1 == y.Item1 && x.Item2 == y.Item2) || (x.Item1 == y.Item2 && x.Item2 == y.Item1);
     }
 
-    int IEqualityComparer<Tuple<Vector3, Vector3>>.GetHashCode(Tuple<Vector3, Vector3> obj)
+    int IEqualityComparer<Tuple<Vector3Int, Vector3Int>>.GetHashCode(Tuple<Vector3Int, Vector3Int> obj)
     {
       return obj.Item1.GetHashCode() + obj.Item2.GetHashCode();
     }
@@ -49,13 +55,29 @@ public class WorldGenerator : MonoBehaviour
 
   private void Start()
   {
+    double start_time = Time.realtimeSinceStartup;
     rng_ = new System.Random();
+    fraction_decimals_power_ = Mathf.Pow(10, fraction_decimals_);
 
     //RunTests();
 
-    if(hexagon_size_ < 1)
+    if(hexagon_size_ < 2)
+    {
+      Debug.LogError("hexagon_size_ is too small");
       return;
+    }
 
+    GenerateGrid();
+    Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
+  }
+
+  private void Update()
+  {
+    DebugDrawLines(debug_lines_.Select(x => { return new Tuple<Vector3, Vector3>(IntToFloatVector(x.Item1), IntToFloatVector(x.Item2)); }).ToArray());
+  }
+
+  private void GenerateGrid()
+  {
     float long_distance = Mathf.Sin(Mathf.Deg2Rad * 60) * hexagon_point_distance_;
     float short_distance = Mathf.Sin(Mathf.Deg2Rad * 30) * hexagon_point_distance_;
 
@@ -74,21 +96,31 @@ public class WorldGenerator : MonoBehaviour
                            directions_[0] - directions_[5]};
 
     min_edge_vertex_distance_sqr_ = Mathf.Pow(long_distance * (hexagon_size_ - 1) - 0.01f, 2);
+    max_edge_vertex_distance_sqr_ = Mathf.Pow(long_distance * hexagon_size_ - 0.01f, 2);
 
     GenerateVerts();
-    DebugCreateVerts(verts_.ToArray());
+    //DebugCreateVerts(verts_.ToArray());
 
     GenerateLines();
-    //DebugPrintLinesInfo(lines_.ToArray());
 
     GenerateLargeVertexNeighbors();
 
     RemoveRandomLinesToMakeQuads();
-  }
 
-  private void Update()
-  {
-    DebugDrawLines(lines_.ToArray());
+    GenerateSmallVertexNeighborsAlongLines();
+
+    FindAndPoluteTriangles();
+
+    PoluteQuads();
+
+    //DebugCreateVerts(small_vertex_neighbors_.Keys.Select(key => IntToFloatVector(key)).ToArray());
+    foreach(KeyValuePair<Vector3Int, HashSet<Vector3Int>> entry in small_vertex_neighbors_)
+    {
+      foreach(Vector3Int point in entry.Value)
+        debug_lines_.Add(new Tuple<Vector3Int, Vector3Int>(entry.Key, point));
+    }
+
+    CleanUp();
   }
 
   private void GenerateVerts()
@@ -111,12 +143,12 @@ public class WorldGenerator : MonoBehaviour
 
   private void GenerateLargeVertexNeighbors()
   {
-    foreach (Tuple<Vector3, Vector3> line in lines_)
+    foreach (Tuple<Vector3Int, Vector3Int> line in lines_)
     {
       if(!large_vertex_neighbors_.ContainsKey(line.Item1))
-        large_vertex_neighbors_[line.Item1] = new HashSet<Vector3>();
+        large_vertex_neighbors_[line.Item1] = new HashSet<Vector3Int>();
       if(!large_vertex_neighbors_.ContainsKey(line.Item2))
-        large_vertex_neighbors_[line.Item2] = new HashSet<Vector3>();
+        large_vertex_neighbors_[line.Item2] = new HashSet<Vector3Int>();
       large_vertex_neighbors_[line.Item1].Add(line.Item2);
       large_vertex_neighbors_[line.Item2].Add(line.Item1);
     }
@@ -124,27 +156,26 @@ public class WorldGenerator : MonoBehaviour
 
   private void GenerateLines()
   {
-    float max_radius_sqr = Mathf.Pow(hexagon_point_distance_ * (hexagon_size_ - 1), 2);
-
     for(int vert_i = 0; vert_i < verts_.Count; ++vert_i)
     {
       for(int side_i = 0; side_i < kHexagonSides; ++side_i)
       {
-        if((verts_[vert_i] + directions_[side_i]).sqrMagnitude > max_radius_sqr)
+        if((verts_[vert_i] + directions_[side_i]).sqrMagnitude >= max_edge_vertex_distance_sqr_)
           continue;
-        lines_.Add(new Tuple<Vector3, Vector3>(verts_[vert_i], verts_[vert_i] + directions_[side_i]));
+        lines_.Add(new Tuple<Vector3Int, Vector3Int>(FloatToIntVector(verts_[vert_i]), FloatToIntVector(verts_[vert_i] + directions_[side_i])));
       }
     }
   }
 
   private void RemoveRandomLinesToMakeQuads()
   {
-    Tuple<Vector3, Vector3>[] shuffled_lines_ = lines_.ToArray();
+    Tuple<Vector3Int, Vector3Int>[] shuffled_lines_ = lines_.ToArray();
     Utilities.ShuffleArray(shuffled_lines_, rng_);
 
     for(int i = 0; i < shuffled_lines_.Length; ++i)
     {
-      if(IsEdgeVertex(shuffled_lines_[i].Item1) && IsEdgeVertex(shuffled_lines_[i].Item2))
+      // I am not sure if I can make IsEdgeVertex accept int representation and whether I should do that
+      if(IsEdgeVertex(IntToFloatVector(shuffled_lines_[i].Item1)) && IsEdgeVertex(IntToFloatVector(shuffled_lines_[i].Item2)))
         continue;
       if(!DoPointsHave2CommonNeighbors(shuffled_lines_[i].Item1, shuffled_lines_[i].Item2))
         continue;
@@ -155,10 +186,84 @@ public class WorldGenerator : MonoBehaviour
     }
   }
 
-  private bool DoPointsHave2CommonNeighbors(Vector3 point1, Vector3 point2)
+  private void GenerateSmallVertexNeighborsAlongLines()
+  {
+    foreach (Tuple<Vector3Int, Vector3Int> line in lines_)
+    {
+      // Math should work in this line without converting it to floats, but I am not sure about whether or not we should truncate it or round.
+      // It will be trouncated here and because it's new point anyway this shouldn't be a problem
+      Vector3Int middle = (line.Item1 + line.Item2) / 2;
+      if(!small_vertex_neighbors_.ContainsKey(line.Item1))
+        small_vertex_neighbors_[line.Item1] = new HashSet<Vector3Int>();
+      if(!small_vertex_neighbors_.ContainsKey(middle))
+        small_vertex_neighbors_[middle] = new HashSet<Vector3Int>();
+      if(!small_vertex_neighbors_.ContainsKey(line.Item2))
+        small_vertex_neighbors_[line.Item2] = new HashSet<Vector3Int>();
+      small_vertex_neighbors_[middle].Add(line.Item1);
+      small_vertex_neighbors_[middle].Add(line.Item2);
+      small_vertex_neighbors_[line.Item1].Add(middle);
+      small_vertex_neighbors_[line.Item2].Add(middle);
+    }
+  }
+
+  private void FindAndPoluteTriangles()
+  {
+    foreach(Tuple<Vector3Int, Vector3Int> line in lines_)
+    {
+      Vector3Int common_neighbor = FindCommonNeighbor(line.Item1, line.Item2);
+      if(common_neighbor == kNoCommonNeighboor)
+        continue;
+
+      Vector3Int triangle_middle = (line.Item1 + line.Item2 + common_neighbor) / 3;
+      if(small_vertex_neighbors_.ContainsKey(triangle_middle))
+        continue;
+      Vector3Int line_middle_1 = (line.Item1 + line.Item2) / 2;
+      Vector3Int line_middle_2 = (line.Item1 + common_neighbor) / 2;
+      Vector3Int line_middle_3 = (line.Item2 + common_neighbor) / 2;
+      small_vertex_neighbors_[triangle_middle] = new HashSet<Vector3Int>(new[]{line_middle_1, line_middle_2, line_middle_3});
+      small_vertex_neighbors_[line_middle_1].Add(triangle_middle);
+      small_vertex_neighbors_[line_middle_2].Add(triangle_middle);
+      small_vertex_neighbors_[line_middle_3].Add(triangle_middle);
+    }
+  }
+
+  private void PoluteQuads()
+  {
+    foreach(Tuple<Vector3Int, Vector3Int> line in removed_lines_)
+    {
+      Tuple<Vector3Int, Vector3Int> common_neighbors = Find2CommonNeighbors(line.Item1, line.Item2);
+      // They should be present. If not something went wrong
+      Debug.Assert(common_neighbors.Item1 != kNoCommonNeighboor && common_neighbors.Item2 != kNoCommonNeighboor);
+      Vector3Int quad_middle = (line.Item1 + line.Item2 + common_neighbors.Item1 + common_neighbors.Item2) / 4;
+      if(small_vertex_neighbors_.ContainsKey(quad_middle))
+        continue;
+      Vector3Int line_middle_1 = (line.Item1 + common_neighbors.Item1) / 2;
+      Vector3Int line_middle_2 = (line.Item1 + common_neighbors.Item2) / 2;
+      Vector3Int line_middle_3 = (line.Item2 + common_neighbors.Item1) / 2;
+      Vector3Int line_middle_4 = (line.Item2 + common_neighbors.Item2) / 2;
+      small_vertex_neighbors_[quad_middle] = new HashSet<Vector3Int>(new[]{line_middle_1, line_middle_2, line_middle_3, line_middle_4});
+      small_vertex_neighbors_[line_middle_1].Add(quad_middle);
+      small_vertex_neighbors_[line_middle_2].Add(quad_middle);
+      small_vertex_neighbors_[line_middle_3].Add(quad_middle);
+      small_vertex_neighbors_[line_middle_4].Add(quad_middle);
+    }
+  }
+
+  private void CleanUp()
+  {
+    large_vertex_neighbors_.Clear();
+    verts_.Clear();
+    lines_.Clear();
+    removed_lines_.Clear();
+  }
+
+  // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it
+  // It works as it is
+
+  private bool DoPointsHave2CommonNeighbors(Vector3Int point1, Vector3Int point2)
   {
     int matches = 0;
-    foreach(Vector3 point in large_vertex_neighbors_[point1])
+    foreach(Vector3Int point in large_vertex_neighbors_[point1])
     {
       if(large_vertex_neighbors_[point2].Contains(point))
         ++matches;
@@ -167,18 +272,55 @@ public class WorldGenerator : MonoBehaviour
     return matches == 2;
   }
 
+  private Vector3Int FindCommonNeighbor(Vector3Int point1, Vector3Int point2)
+  {
+    foreach(Vector3Int point in large_vertex_neighbors_[point1])
+    {
+      if(large_vertex_neighbors_[point2].Contains(point))
+        return point;
+    }
+
+    return kNoCommonNeighboor;
+  }
+
+  private Tuple<Vector3Int, Vector3Int> Find2CommonNeighbors(Vector3Int point1, Vector3Int point2)
+  {
+    Vector3Int first_neighbor = kNoCommonNeighboor;
+    foreach(Vector3Int point in large_vertex_neighbors_[point1])
+    {
+      if(large_vertex_neighbors_[point2].Contains(point))
+      {
+        if(first_neighbor != kNoCommonNeighboor)
+          return new Tuple<Vector3Int, Vector3Int>(first_neighbor, point);
+        first_neighbor = point;
+      }
+    }
+
+    return new Tuple<Vector3Int, Vector3Int>(first_neighbor, kNoCommonNeighboor);
+  }
+
   private bool IsEdgeVertex(Vector3 point)
   {
     return point.sqrMagnitude >= min_edge_vertex_distance_sqr_;
   }
 
+  private Vector3 IntToFloatVector(Vector3Int vector)
+  {
+    return new Vector3((float)vector.x / fraction_decimals_power_, (float)vector.y / fraction_decimals_power_, (float)vector.z / fraction_decimals_power_);
+  }
+
+  private Vector3Int FloatToIntVector(Vector3 vector)
+  {
+    return new Vector3Int(Mathf.RoundToInt(vector.x * fraction_decimals_power_), Mathf.RoundToInt(vector.y * fraction_decimals_power_), Mathf.RoundToInt(vector.z * fraction_decimals_power_));
+  }
+
   private void RunTests()
   {
-    IEqualityComparer<Tuple<Vector3, Vector3>> comparer = new PointComparer();
-    Debug.Log("PointComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3, Vector3>(Vector3.one, Vector3.zero), new Tuple<Vector3, Vector3>(Vector3.zero, Vector3.one)));
-    Debug.Log("PointComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3, Vector3>(Vector3.one, Vector3.zero)) == comparer.GetHashCode(new Tuple<Vector3, Vector3>(Vector3.zero, Vector3.one))).ToString());
-    Debug.Log("PointComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3, Vector3>(new Vector3(-0.87f, 0.0f, 0.50f), Vector3.zero), new Tuple<Vector3, Vector3>(Vector3.zero, new Vector3(-0.87f, 0.0f, 0.50f))));
-    Debug.Log("PointComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3, Vector3>(new Vector3(-0.87f, 0.0f, 0.50f), Vector3.zero)) == comparer.GetHashCode(new Tuple<Vector3, Vector3>(Vector3.zero, new Vector3(-0.87f, 0.0f, 0.50f)))).ToString());
+    IEqualityComparer<Tuple<Vector3Int, Vector3Int>> comparer = new LineComparer();
+    Debug.Log("LineComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3Int, Vector3Int>(Vector3Int.one, Vector3Int.zero), new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, Vector3Int.one)));
+    Debug.Log("LineComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.one, Vector3Int.zero)) == comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, Vector3Int.one))).ToString());
+    Debug.Log("LineComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3Int, Vector3Int>(new Vector3Int(-87, 0, 50), Vector3Int.zero), new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, new Vector3Int(-87, 0, 50))));
+    Debug.Log("LineComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(new Vector3Int(-87, 0, 50), Vector3Int.zero)) == comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, new Vector3Int(-87, 0, 50)))).ToString());
   }
 
   private void DebugPrintLinesInfo(Tuple<Vector3, Vector3>[] lines)

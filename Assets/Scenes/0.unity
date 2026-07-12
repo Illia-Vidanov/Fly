@@ -273,9 +273,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55f9dac9a919538aa9891c2931e0aedf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WorldGenerator
-  hexagon_size_: 5
+  hexagon_size_: 10
   hexagon_point_distance_: 1
   start_position_: {fileID: 0}
+  fraction_decimals_: 3
   debug_point_: {fileID: 9191600468130873308, guid: 75292d46c4fc602c1a929c09046262ff, type: 3}
   mesh_filter_: {fileID: 147233620}
 --- !u!23 &147233619
