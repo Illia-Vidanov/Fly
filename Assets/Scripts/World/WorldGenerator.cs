@@ -2,44 +2,60 @@ using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.VisualScripting;
 
 public class WorldGenerator : MonoBehaviour
 {
-  [Header("Parameters")]
+  [Header("General")]
   [SerializeField] private int hexagon_size_;
   [SerializeField] private float hexagon_point_distance_;
   [SerializeField] private Transform start_position_;
   [SerializeField] private int fraction_decimals_;
+  [SerializeField] private int smoothing_iterations_;
+  [SerializeField] [Range(0.0f, 1.0f)] private float smoothing_factor_;
+
+  [Header("Layers")]
+  [SerializeField] private int layers_;
+  [SerializeField] private float layer_distance_;
+  [SerializeField] private Vector2 layer_frequency_;
+  [SerializeField] private float layer_amplitude_;
+  
+  [Header("Controls")]
+  [SerializeField] private bool regenerate_;
 
   [Header("Debug")]
   [SerializeField] private GameObject debug_point_;
   [SerializeField] private MeshFilter mesh_filter_;
 
-  private HashSet<Tuple<Vector3Int, Vector3Int>> debug_lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparer());
+  private HashSet<Tuple<Vector3, Vector3>> debug_lines_ = new HashSet<Tuple<Vector3, Vector3>>(new LineComparer());
   
   // privates
 
   private System.Random rng_;
-  private List<Vector3> verts_ = new List<Vector3>();
-  // For future me. I use HashSet here to not to deal with collisions. But it might be worth performance-wise to use list idk.
-  private Dictionary<Vector3Int, HashSet<Vector3Int>> large_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
-  private HashSet<Tuple<Vector3Int, Vector3Int>> lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparer());
-  private List<Tuple<Vector3Int, Vector3Int>> removed_lines_ = new List<Tuple<Vector3Int, Vector3Int>>();
-  private Dictionary<Vector3Int, HashSet<Vector3Int>> small_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
 
+  // Those variables are transitional (will be destructed after generation)
   private Vector3[] directions_;
   private Vector3[] steps_;
   private float min_edge_vertex_distance_sqr_;
   private float max_edge_vertex_distance_sqr_;
   private float fraction_decimals_power_;
+  private List<Vector3> verts_ = new List<Vector3>();
+  // For future me. I use HashSet here to not to deal with collisions. But it might be worth performance-wise to use list idk.
+  private Dictionary<Vector3Int, HashSet<Vector3Int>> large_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
+  private HashSet<Tuple<Vector3Int, Vector3Int>> lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparerInt());
+  private List<Tuple<Vector3Int, Vector3Int>> removed_lines_ = new List<Tuple<Vector3Int, Vector3Int>>();
+  private Dictionary<Vector3Int, HashSet<Vector3Int>> small_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
+  
+  // Those are resulting lists from world generation
+  private List<Vector3> vertex_position_;
+  private List<List<int>> vertex_neighbors_;
+  private List<float> vertex_value_;
 
   // constants
 
   private const int kHexagonSides = 6;
   private Vector3Int kNoCommonNeighboor = new Vector3Int(int.MaxValue, int.MaxValue, int.MaxValue);
 
-  private class LineComparer : IEqualityComparer<Tuple<Vector3Int, Vector3Int>>
+  private class LineComparerInt : IEqualityComparer<Tuple<Vector3Int, Vector3Int>>
   {
     bool IEqualityComparer<Tuple<Vector3Int, Vector3Int>>.Equals(Tuple<Vector3Int, Vector3Int> x, Tuple<Vector3Int, Vector3Int> y)
     {
@@ -52,32 +68,81 @@ public class WorldGenerator : MonoBehaviour
     }
   };
 
+  private class LineComparer : IEqualityComparer<Tuple<Vector3, Vector3>>
+  {
+    bool IEqualityComparer<Tuple<Vector3, Vector3>>.Equals(Tuple<Vector3, Vector3> x, Tuple<Vector3, Vector3> y)
+    {
+      return (x.Item1 == y.Item1 && x.Item2 == y.Item2) || (x.Item1 == y.Item2 && x.Item2 == y.Item1);
+    }
+
+    int IEqualityComparer<Tuple<Vector3, Vector3>>.GetHashCode(Tuple<Vector3, Vector3> obj)
+    {
+      return obj.Item1.GetHashCode() + obj.Item2.GetHashCode();
+    }
+  };
+
+  private class Vector3IntComparer : IComparer<Vector3Int>
+  {
+    int IComparer<Vector3Int>.Compare(Vector3Int lhs, Vector3Int rhs)
+    {
+      if(lhs == rhs)
+        return 0;
+
+      if(lhs.x < rhs.x)
+        return -1;
+      else if(lhs.x == rhs.x)
+      {
+        if(lhs.y < rhs.y)
+          return -1;
+        else if(lhs.y == rhs.y)
+        {
+          if(lhs.z < rhs.z)
+            return -1;
+        }
+      }
+      return 1;
+    }
+  }
+
 
   private void Start()
   {
-    double start_time = Time.realtimeSinceStartup;
-    rng_ = new System.Random();
-    fraction_decimals_power_ = Mathf.Pow(10, fraction_decimals_);
-
     //RunTests();
+    rng_ = new System.Random();
 
+    GenerateGrid();
+  }
+
+  private void Update()
+  {
+    DebugDrawLines(debug_lines_.ToArray());
+    HandleControls();
+  }
+
+  private void HandleControls()
+  {
+    if(regenerate_)
+    {
+      vertex_position_.Clear();
+      vertex_neighbors_.Clear();
+      debug_lines_.Clear();
+      GenerateGrid();
+    }
+
+    regenerate_ = false;
+  }
+
+  private void GenerateGrid()
+  {
     if(hexagon_size_ < 2)
     {
       Debug.LogError("hexagon_size_ is too small");
       return;
     }
 
-    GenerateGrid();
-    Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
-  }
+    double start_time = Time.realtimeSinceStartup;
+    fraction_decimals_power_ = Mathf.Pow(10, fraction_decimals_);
 
-  private void Update()
-  {
-    DebugDrawLines(debug_lines_.Select(x => { return new Tuple<Vector3, Vector3>(IntToFloatVector(x.Item1), IntToFloatVector(x.Item2)); }).ToArray());
-  }
-
-  private void GenerateGrid()
-  {
     float long_distance = Mathf.Sin(Mathf.Deg2Rad * 60) * hexagon_point_distance_;
     float short_distance = Mathf.Sin(Mathf.Deg2Rad * 30) * hexagon_point_distance_;
 
@@ -99,7 +164,6 @@ public class WorldGenerator : MonoBehaviour
     max_edge_vertex_distance_sqr_ = Mathf.Pow(long_distance * hexagon_size_ - 0.01f, 2);
 
     GenerateVerts();
-    //DebugCreateVerts(verts_.ToArray());
 
     GenerateLines();
 
@@ -113,14 +177,21 @@ public class WorldGenerator : MonoBehaviour
 
     PoluteQuads();
 
-    //DebugCreateVerts(small_vertex_neighbors_.Keys.Select(key => IntToFloatVector(key)).ToArray());
-    foreach(KeyValuePair<Vector3Int, HashSet<Vector3Int>> entry in small_vertex_neighbors_)
-    {
-      foreach(Vector3Int point in entry.Value)
-        debug_lines_.Add(new Tuple<Vector3Int, Vector3Int>(entry.Key, point));
-    }
+    ConstructResultLists();
 
     CleanUp();
+
+    ApplySmoothing();
+
+    AddLayers();
+    
+    for(int vertex_i = 0; vertex_i < vertex_position_.Count; ++vertex_i)
+    {
+      for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[vertex_i], vertex_position_[vertex_neighbors_[vertex_i][neighbor_i]]));
+    }
+
+    Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
   }
 
   private void GenerateVerts()
@@ -249,12 +320,57 @@ public class WorldGenerator : MonoBehaviour
     }
   }
 
+  private void ConstructResultLists()
+  {
+    // We use separate array to avoid constant int to float vector conversions
+    Vector3Int[] keys = small_vertex_neighbors_.Keys.ToArray();
+    // We sort it to be able to do binary search
+    Array.Sort(keys, new Vector3IntComparer());
+
+    // Here we add our offset of start position
+    vertex_position_ = new List<Vector3>(keys.Select(key => { return IntToFloatVector(key) + start_position_.position; }));
+    vertex_neighbors_ = new List<List<int>>(vertex_position_.Count);
+
+    for(int i = 0; i < keys.Length; ++i)
+    {
+      HashSet<Vector3Int> neighbors = small_vertex_neighbors_[keys[i]];
+      vertex_neighbors_.Add(new List<int>(neighbors.Count));
+      foreach(Vector3Int neighbor in neighbors)
+        vertex_neighbors_[i].Add(Array.BinarySearch(keys, neighbor, new Vector3IntComparer()));
+    }
+  }
+
   private void CleanUp()
   {
     large_vertex_neighbors_.Clear();
+    small_vertex_neighbors_.Clear();
     verts_.Clear();
     lines_.Clear();
     removed_lines_.Clear();
+  }
+
+  private void ApplySmoothing()
+  {
+    for(int iteration_i = 0; iteration_i < smoothing_iterations_; ++iteration_i)
+    {
+      List<Vector3> old_position_ = vertex_position_;
+      for(int vertex_i = 0; vertex_i < old_position_.Count; ++vertex_i)
+      {
+        if(IsEdgeVertex(old_position_[vertex_i]))
+          continue;
+        
+        Vector3 desired_position = Vector3.zero;
+        for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
+          desired_position += old_position_[vertex_neighbors_[vertex_i][neighbor_i]];
+        desired_position /= vertex_neighbors_[vertex_i].Count;
+        vertex_position_[vertex_i] += (desired_position - vertex_position_[vertex_i]) * smoothing_factor_;
+      }
+    }
+  }
+
+  private void AddLayers()
+  {
+    
   }
 
   // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it
@@ -316,7 +432,7 @@ public class WorldGenerator : MonoBehaviour
 
   private void RunTests()
   {
-    IEqualityComparer<Tuple<Vector3Int, Vector3Int>> comparer = new LineComparer();
+    IEqualityComparer<Tuple<Vector3Int, Vector3Int>> comparer = new LineComparerInt();
     Debug.Log("LineComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3Int, Vector3Int>(Vector3Int.one, Vector3Int.zero), new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, Vector3Int.one)));
     Debug.Log("LineComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.one, Vector3Int.zero)) == comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, Vector3Int.one))).ToString());
     Debug.Log("LineComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3Int, Vector3Int>(new Vector3Int(-87, 0, 50), Vector3Int.zero), new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, new Vector3Int(-87, 0, 50))));

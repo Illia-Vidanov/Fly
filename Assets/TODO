@@ -1,0 +1,1 @@
+optimize dict and hashset lookups in world generatore by storing and reusing reference t oneeded value
