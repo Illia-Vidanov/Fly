@@ -273,7 +273,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55f9dac9a919538aa9891c2931e0aedf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WorldGenerator
-  hexagon_size_: 10
+  hexagon_size_: 6
   hexagon_point_distance_: 1
   start_position_: {fileID: 784055213}
   fraction_decimals_: 3
@@ -283,9 +283,13 @@ MonoBehaviour:
   layer_distance_: 3
   layer_frequency_: {x: 0.2, y: 0.2}
   layer_amplitude_: 1
+  value_frequency_: {x: 0.5, y: 0.5, z: 0.5}
+  value_amplitude_: 1
+  mesh_solid_trashhold_: 0
   regenerate_: 0
   debug_point_: {fileID: 9191600468130873308, guid: 75292d46c4fc602c1a929c09046262ff, type: 3}
   mesh_filter_: {fileID: 147233620}
+  default_material_: {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
 --- !u!23 &147233619
 MeshRenderer:
   m_ObjectHideFlags: 0

@@ -2,6 +2,8 @@ using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 
 public class WorldGenerator : MonoBehaviour
 {
@@ -18,6 +20,13 @@ public class WorldGenerator : MonoBehaviour
   [SerializeField] private float layer_distance_;
   [SerializeField] private Vector2 layer_frequency_;
   [SerializeField] private float layer_amplitude_;
+
+  [Header("Values")]
+  [SerializeField] private Vector3 value_frequency_;
+  [SerializeField] private float value_amplitude_;
+  
+  [Header("Mesh")]
+  [SerializeField] private float mesh_solid_trashhold_;
   
   [Header("Controls")]
   [SerializeField] private bool regenerate_;
@@ -25,6 +34,7 @@ public class WorldGenerator : MonoBehaviour
   [Header("Debug")]
   [SerializeField] private GameObject debug_point_;
   [SerializeField] private MeshFilter mesh_filter_;
+  [SerializeField] private Material default_material_;
 
   private HashSet<Tuple<Vector3, Vector3>> debug_lines_ = new HashSet<Tuple<Vector3, Vector3>>(new LineComparer());
   
@@ -104,6 +114,11 @@ public class WorldGenerator : MonoBehaviour
       }
       return 1;
     }
+  }
+
+  private class ListDummy<T>
+  {
+    public T data;
   }
 
 
@@ -189,42 +204,35 @@ public class WorldGenerator : MonoBehaviour
     ApplySmoothing();
 
     AddLayers();
-    
-    //for(int vertex_i = 0; vertex_i < vertex_position_.Count; ++vertex_i)
-    //{
-    //  for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
-    //  {
-    //    debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[vertex_i], vertex_position_[vertex_neighbors_[vertex_i][neighbor_i]]));
-    //  }
-    //}
 
-    Debug.Log(cubes_.Count);
+    GenerateValues();
+    /*
     for(int cube_i = 0; cube_i < cubes_.Count; ++cube_i)
     {
       Debug.Assert(cubes_[cube_i].Count == 8);
-      try
-      {
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][1]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][2]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][3]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][0]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][1]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][2]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][3]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][0]]));
 
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][4]], vertex_position_[cubes_[cube_i][5]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][5]], vertex_position_[cubes_[cube_i][6]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][6]], vertex_position_[cubes_[cube_i][7]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][7]], vertex_position_[cubes_[cube_i][4]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][4]], vertex_position_[cubes_[cube_i][5]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][5]], vertex_position_[cubes_[cube_i][6]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][6]], vertex_position_[cubes_[cube_i][7]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][7]], vertex_position_[cubes_[cube_i][4]]));
 
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][4]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][5]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][6]]));
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][7]]));
-      }
-      catch(Exception e)
-      {
-        Debug.Log(cube_i);
-        Debug.LogError(string.Join(", ", cubes_[cube_i].Select(x => x.ToString())));
-      }
-      
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][4]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][5]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][6]]));
+      debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][7]]));
+    } */
+
+    for(int i = 0; i < vertex_position_.Count; ++i)
+    {
+      GameObject point = Instantiate(debug_point_, vertex_position_[i], Quaternion.identity);
+      point.name = vertex_value_[i].ToString();
+      Material material = new Material(default_material_);
+      material.color = Color.HSVToRGB(0.0f, 0.0f, Mathf.Clamp(vertex_value_[i] / value_amplitude_, -1.0f, 1.0f));
+      point.GetComponent<MeshRenderer>().material = material;
     }
 
     Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
@@ -497,6 +505,26 @@ public class WorldGenerator : MonoBehaviour
       vertex_neighbors_[i].Add(i + init_neighbors_count);
   }
 
+  private void GenerateValues()
+  {
+    NoiseDotNet.NoiseSettings noise_settings = new NoiseDotNet.NoiseSettings();
+    noise_settings.XFrequency = value_frequency_.x;
+    noise_settings.YFrequency = value_frequency_.y;
+    noise_settings.ZFrequency = value_frequency_.y;
+    noise_settings.Amplitude = value_amplitude_;
+    noise_settings.Seed = rng_.Next();
+
+    float[] output = new float[vertex_position_.Count];
+
+    // Here I use a little bit of unsafe code to create values in place
+    NoiseDotNet.Noise.GradientNoise3D(new ReadOnlySpan<float>(vertex_position_.Select(vector => vector.x).ToArray()),
+                                      new ReadOnlySpan<float>(vertex_position_.Select(vector => vector.y).ToArray()),
+                                      new ReadOnlySpan<float>(vertex_position_.Select(vector => vector.z).ToArray()),
+                                      output, noise_settings);
+
+    vertex_value_ = new List<float>(output);
+  }
+
   // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it
   // It works as it is
 
@@ -561,22 +589,6 @@ public class WorldGenerator : MonoBehaviour
     Debug.Log("LineComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.one, Vector3Int.zero)) == comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, Vector3Int.one))).ToString());
     Debug.Log("LineComparer.Equals test expected true, got: " + comparer.Equals(new Tuple<Vector3Int, Vector3Int>(new Vector3Int(-87, 0, 50), Vector3Int.zero), new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, new Vector3Int(-87, 0, 50))));
     Debug.Log("LineComparer.GetHashCoode test expected true, got: " + (comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(new Vector3Int(-87, 0, 50), Vector3Int.zero)) == comparer.GetHashCode(new Tuple<Vector3Int, Vector3Int>(Vector3Int.zero, new Vector3Int(-87, 0, 50)))).ToString());
-  }
-
-  private void DebugPrintLinesInfo(Tuple<Vector3, Vector3>[] lines)
-  {
-    Debug.Log(lines.Length);
-    for(int i = 0; i < lines.Length; ++i)
-      Debug.Log(lines[i].Item1.ToString() + " " + lines[i].Item2.ToString());
-  }
-
-  private void DebugCreateVerts(Vector3[] verts)
-  {
-    for(int i = 0; i < verts.Length; ++i)
-    {
-      GameObject vertex_object = Instantiate(debug_point_, verts[i], Quaternion.identity);
-      vertex_object.name = i.ToString();
-    }
   }
 
   private void DebugDrawLines(Tuple<Vector3, Vector3>[] lines)
