@@ -140,6 +140,12 @@ public class WorldGenerator : MonoBehaviour
       return;
     }
 
+    if(layers_ < 1)
+    {
+      Debug.LogError("There is less than 1 layer");
+      return;
+    }
+
     double start_time = Time.realtimeSinceStartup;
     fraction_decimals_power_ = Mathf.Pow(10, fraction_decimals_);
 
@@ -188,7 +194,9 @@ public class WorldGenerator : MonoBehaviour
     for(int vertex_i = 0; vertex_i < vertex_position_.Count; ++vertex_i)
     {
       for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
+      {
         debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[vertex_i], vertex_position_[vertex_neighbors_[vertex_i][neighbor_i]]));
+      }
     }
 
     Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
@@ -370,7 +378,58 @@ public class WorldGenerator : MonoBehaviour
 
   private void AddLayers()
   {
-    
+    if(layers_ < 2)
+      return;
+
+    Vector3[] old_position_ = vertex_position_.ToArray();
+    // It's list of references
+    List<int>[] old_neighbors_ = vertex_neighbors_.ToArray();
+
+    for(int i = 1; i < layers_; ++i)
+    {
+      vertex_position_.AddRange(old_position_);
+      vertex_neighbors_.AddRange(old_neighbors_.Select(list => new List<int>(list)));
+    }
+
+    for(int vertex_i = old_neighbors_.Length; vertex_i < vertex_neighbors_.Count; ++vertex_i)
+    {
+      int layer = vertex_i / old_neighbors_.Length;
+      int neighbor_count = old_neighbors_[vertex_i - old_neighbors_.Length * layer].Count;
+      for(int neighbor_i = 0; neighbor_i < neighbor_count; ++neighbor_i)
+        vertex_neighbors_[vertex_i][neighbor_i] += old_neighbors_.Length * layer;
+      
+      vertex_position_[vertex_i] += Vector3.up * (layer_distance_ * layer);
+      
+      if(layer != (layers_ - 1)) // if not top layer
+        vertex_neighbors_[vertex_i].Add(vertex_i + old_neighbors_.Length);
+      
+      vertex_neighbors_[vertex_i].Add(vertex_i - old_neighbors_.Length);
+    }
+
+    // Add noise
+
+    NoiseDotNet.NoiseSettings noise_settings = new NoiseDotNet.NoiseSettings();
+    noise_settings.XFrequency = layer_frequency_.x;
+    noise_settings.YFrequency = layer_frequency_.y;
+    noise_settings.Amplitude = layer_amplitude_;
+    noise_settings.Seed = rng_.Next();
+
+    for(int layer_i = 0; layer_i < layers_; ++layer_i)
+    {
+      ++noise_settings.Seed;
+      List<Vector3> slice = vertex_position_.GetRange(layer_i * old_position_.Length, old_position_.Length);
+      float[] output = new float[old_position_.Length];
+      NoiseDotNet.Noise.GradientNoise2D(new ReadOnlySpan<float>(slice.Select(vector => vector.x).ToArray()),
+                                        new ReadOnlySpan<float>(slice.Select(vector => vector.z).ToArray()),
+                                        output, noise_settings);
+
+      for(int vertex_i = 0; vertex_i < old_position_.Length; ++vertex_i)
+        vertex_position_[vertex_i + layer_i * old_position_.Length] += Vector3.up * output[vertex_i];
+    }
+
+    // We do it after loop, because in the loop we use values of initial layer
+    for(int i = 0; i < old_neighbors_.Length; ++i)
+      vertex_neighbors_[i].Add(i + old_neighbors_.Length);
   }
 
   // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it

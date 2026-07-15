@@ -279,6 +279,11 @@ MonoBehaviour:
   fraction_decimals_: 3
   smoothing_iterations_: 1
   smoothing_factor_: 1
+  layers_: 5
+  layer_distance_: 3
+  layer_frequency_: {x: 0.2, y: 0.2}
+  layer_amplitude_: 1
+  regenerate_: 0
   debug_point_: {fileID: 9191600468130873308, guid: 75292d46c4fc602c1a929c09046262ff, type: 3}
   mesh_filter_: {fileID: 147233620}
 --- !u!23 &147233619
