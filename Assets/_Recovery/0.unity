@@ -279,7 +279,7 @@ MonoBehaviour:
   fraction_decimals_: 3
   smoothing_iterations_: 1
   smoothing_factor_: 1
-  layers_: 3
+  layers_: 2
   layer_distance_: 3
   layer_frequency_: {x: 0.2, y: 0.2}
   layer_amplitude_: 1

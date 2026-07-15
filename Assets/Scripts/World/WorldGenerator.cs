@@ -44,11 +44,13 @@ public class WorldGenerator : MonoBehaviour
   private HashSet<Tuple<Vector3Int, Vector3Int>> lines_ = new HashSet<Tuple<Vector3Int, Vector3Int>>(new LineComparerInt());
   private List<Tuple<Vector3Int, Vector3Int>> removed_lines_ = new List<Tuple<Vector3Int, Vector3Int>>();
   private Dictionary<Vector3Int, HashSet<Vector3Int>> small_vertex_neighbors_ = new Dictionary<Vector3Int, HashSet<Vector3Int>>();
+  private List<List<Vector3Int>> quads_ = new List<List<Vector3Int>>();
   
   // Those are resulting lists from world generation
   private List<Vector3> vertex_position_;
   private List<List<int>> vertex_neighbors_;
   private List<float> vertex_value_;
+  private List<List<int>> cubes_;
 
   // constants
 
@@ -123,13 +125,10 @@ public class WorldGenerator : MonoBehaviour
   {
     if(regenerate_)
     {
-      vertex_position_.Clear();
-      vertex_neighbors_.Clear();
       debug_lines_.Clear();
       GenerateGrid();
+      regenerate_ = false;
     }
-
-    regenerate_ = false;
   }
 
   private void GenerateGrid()
@@ -191,12 +190,41 @@ public class WorldGenerator : MonoBehaviour
 
     AddLayers();
     
-    for(int vertex_i = 0; vertex_i < vertex_position_.Count; ++vertex_i)
+    //for(int vertex_i = 0; vertex_i < vertex_position_.Count; ++vertex_i)
+    //{
+    //  for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
+    //  {
+    //    debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[vertex_i], vertex_position_[vertex_neighbors_[vertex_i][neighbor_i]]));
+    //  }
+    //}
+
+    Debug.Log(cubes_.Count);
+    for(int cube_i = 0; cube_i < cubes_.Count; ++cube_i)
     {
-      for(int neighbor_i = 0; neighbor_i < vertex_neighbors_[vertex_i].Count; ++neighbor_i)
+      Debug.Assert(cubes_[cube_i].Count == 8);
+      try
       {
-        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[vertex_i], vertex_position_[vertex_neighbors_[vertex_i][neighbor_i]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][1]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][2]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][3]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][0]]));
+
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][4]], vertex_position_[cubes_[cube_i][5]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][5]], vertex_position_[cubes_[cube_i][6]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][6]], vertex_position_[cubes_[cube_i][7]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][7]], vertex_position_[cubes_[cube_i][4]]));
+
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][0]], vertex_position_[cubes_[cube_i][4]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][5]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][6]]));
+        debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][7]]));
       }
+      catch(Exception e)
+      {
+        Debug.Log(cube_i);
+        Debug.LogError(string.Join(", ", cubes_[cube_i].Select(x => x.ToString())));
+      }
+      
     }
 
     Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
@@ -303,6 +331,11 @@ public class WorldGenerator : MonoBehaviour
       small_vertex_neighbors_[line_middle_1].Add(triangle_middle);
       small_vertex_neighbors_[line_middle_2].Add(triangle_middle);
       small_vertex_neighbors_[line_middle_3].Add(triangle_middle);
+
+      // Add quads
+      quads_.Add(new List<Vector3Int>(new[]{line.Item1, line_middle_1, triangle_middle, line_middle_2}));
+      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_1, triangle_middle, line_middle_3}));
+      quads_.Add(new List<Vector3Int>(new[]{common_neighbor, line_middle_2, triangle_middle, line_middle_3}));
     }
   }
 
@@ -325,6 +358,12 @@ public class WorldGenerator : MonoBehaviour
       small_vertex_neighbors_[line_middle_2].Add(quad_middle);
       small_vertex_neighbors_[line_middle_3].Add(quad_middle);
       small_vertex_neighbors_[line_middle_4].Add(quad_middle);
+
+      // Add quads
+      quads_.Add(new List<Vector3Int>(new[]{line.Item1, line_middle_1, quad_middle, line_middle_2}));
+      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_3, quad_middle, line_middle_4}));
+      quads_.Add(new List<Vector3Int>(new[]{common_neighbors.Item1, line_middle_1, quad_middle, line_middle_3}));
+      quads_.Add(new List<Vector3Int>(new[]{common_neighbors.Item2, line_middle_2, quad_middle, line_middle_4}));
     }
   }
 
@@ -338,6 +377,7 @@ public class WorldGenerator : MonoBehaviour
     // Here we add our offset of start position
     vertex_position_ = new List<Vector3>(keys.Select(key => { return IntToFloatVector(key) + start_position_.position; }));
     vertex_neighbors_ = new List<List<int>>(vertex_position_.Count);
+    cubes_ = new List<List<int>>(quads_.Count);
 
     for(int i = 0; i < keys.Length; ++i)
     {
@@ -345,6 +385,12 @@ public class WorldGenerator : MonoBehaviour
       vertex_neighbors_.Add(new List<int>(neighbors.Count));
       foreach(Vector3Int neighbor in neighbors)
         vertex_neighbors_[i].Add(Array.BinarySearch(keys, neighbor, new Vector3IntComparer()));
+    }
+
+    for(int i = 0; i < quads_.Count; ++i)
+    {
+      cubes_.Add(new List<int>(8));
+      cubes_[i].AddRange(quads_[i].Select(position => Array.BinarySearch(keys, position, new Vector3IntComparer())));
     }
   }
 
@@ -355,6 +401,7 @@ public class WorldGenerator : MonoBehaviour
     verts_.Clear();
     lines_.Clear();
     removed_lines_.Clear();
+    quads_.Clear();
   }
 
   private void ApplySmoothing()
@@ -381,29 +428,35 @@ public class WorldGenerator : MonoBehaviour
     if(layers_ < 2)
       return;
 
-    Vector3[] old_position_ = vertex_position_.ToArray();
-    // It's list of references
-    List<int>[] old_neighbors_ = vertex_neighbors_.ToArray();
+    int init_position_count = vertex_position_.Count;
+    // It actually should be the same as position count
+    int init_neighbors_count = vertex_neighbors_.Count;
+    int init_cube_count = cubes_.Count;
 
     for(int i = 1; i < layers_; ++i)
     {
-      vertex_position_.AddRange(old_position_);
-      vertex_neighbors_.AddRange(old_neighbors_.Select(list => new List<int>(list)));
+      vertex_position_.AddRange(vertex_position_.GetRange(0, init_position_count));
+      vertex_neighbors_.AddRange(vertex_neighbors_.GetRange(0, init_neighbors_count).Select(list => new List<int>(list)));
+      
+      if(i == 1)
+        continue;
+        
+      cubes_.AddRange(cubes_.GetRange(0, init_cube_count).Select(list => new List<int>(list)));
     }
 
-    for(int vertex_i = old_neighbors_.Length; vertex_i < vertex_neighbors_.Count; ++vertex_i)
+    for(int vertex_i = init_neighbors_count; vertex_i < vertex_neighbors_.Count; ++vertex_i)
     {
-      int layer = vertex_i / old_neighbors_.Length;
-      int neighbor_count = old_neighbors_[vertex_i - old_neighbors_.Length * layer].Count;
+      int layer = vertex_i / init_neighbors_count;
+      int neighbor_count = vertex_neighbors_[vertex_i - init_neighbors_count * layer].Count;
       for(int neighbor_i = 0; neighbor_i < neighbor_count; ++neighbor_i)
-        vertex_neighbors_[vertex_i][neighbor_i] += old_neighbors_.Length * layer;
+        vertex_neighbors_[vertex_i][neighbor_i] += init_neighbors_count * layer;
       
       vertex_position_[vertex_i] += Vector3.up * (layer_distance_ * layer);
       
       if(layer != (layers_ - 1)) // if not top layer
-        vertex_neighbors_[vertex_i].Add(vertex_i + old_neighbors_.Length);
+        vertex_neighbors_[vertex_i].Add(vertex_i + init_neighbors_count);
       
-      vertex_neighbors_[vertex_i].Add(vertex_i - old_neighbors_.Length);
+      vertex_neighbors_[vertex_i].Add(vertex_i - init_neighbors_count);
     }
 
     // Add noise
@@ -417,19 +470,31 @@ public class WorldGenerator : MonoBehaviour
     for(int layer_i = 0; layer_i < layers_; ++layer_i)
     {
       ++noise_settings.Seed;
-      List<Vector3> slice = vertex_position_.GetRange(layer_i * old_position_.Length, old_position_.Length);
-      float[] output = new float[old_position_.Length];
+      List<Vector3> slice = vertex_position_.GetRange(layer_i * init_position_count, init_position_count);
+      float[] output = new float[init_position_count];
       NoiseDotNet.Noise.GradientNoise2D(new ReadOnlySpan<float>(slice.Select(vector => vector.x).ToArray()),
                                         new ReadOnlySpan<float>(slice.Select(vector => vector.z).ToArray()),
                                         output, noise_settings);
 
-      for(int vertex_i = 0; vertex_i < old_position_.Length; ++vertex_i)
-        vertex_position_[vertex_i + layer_i * old_position_.Length] += Vector3.up * output[vertex_i];
+      for(int vertex_i = 0; vertex_i < init_position_count; ++vertex_i)
+        vertex_position_[vertex_i + layer_i * init_position_count] += Vector3.up * output[vertex_i];
+    }
+
+    // Convert quads into cubes
+    for(int cube_i = 0; cube_i < cubes_.Count; ++cube_i)
+    {
+      int layer = cube_i / init_cube_count;
+      Debug.Assert(cubes_[cube_i].Count == 4);
+      for(int vertex_i = 0; vertex_i < 4; ++vertex_i)
+      {
+        cubes_[cube_i][vertex_i] += init_neighbors_count * layer;
+        cubes_[cube_i].Add(cubes_[cube_i][vertex_i] + init_neighbors_count);
+      }
     }
 
     // We do it after loop, because in the loop we use values of initial layer
-    for(int i = 0; i < old_neighbors_.Length; ++i)
-      vertex_neighbors_[i].Add(i + old_neighbors_.Length);
+    for(int i = 0; i < init_neighbors_count; ++i)
+      vertex_neighbors_[i].Add(i + init_neighbors_count);
   }
 
   // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it
