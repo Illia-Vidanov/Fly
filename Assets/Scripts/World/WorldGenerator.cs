@@ -2,15 +2,12 @@ using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 
 public class WorldGenerator : MonoBehaviour
 {
   [Header("General")]
   [SerializeField] private int hexagon_size_;
   [SerializeField] private float hexagon_point_distance_;
-  [SerializeField] private Transform start_position_;
   [SerializeField] private int fraction_decimals_;
   [SerializeField] private int smoothing_iterations_;
   [SerializeField] [Range(0.0f, 1.0f)] private float smoothing_factor_;
@@ -26,15 +23,17 @@ public class WorldGenerator : MonoBehaviour
   [SerializeField] private float value_amplitude_;
   
   [Header("Mesh")]
+  [SerializeField] private MeshFilter mesh_filter_;
   [SerializeField] private float mesh_solid_trashhold_;
+
+  private Mesh mesh_;
   
   [Header("Controls")]
   [SerializeField] private bool regenerate_;
 
   [Header("Debug")]
   [SerializeField] private GameObject debug_point_;
-  [SerializeField] private MeshFilter mesh_filter_;
-  [SerializeField] private Material default_material_;
+  [SerializeField] private Material debug_default_material_;
 
   private HashSet<Tuple<Vector3, Vector3>> debug_lines_ = new HashSet<Tuple<Vector3, Vector3>>(new LineComparer());
   
@@ -199,13 +198,16 @@ public class WorldGenerator : MonoBehaviour
 
     ConstructResultLists();
 
-    CleanUp();
-
     ApplySmoothing();
 
     AddLayers();
 
     GenerateValues();
+
+    GenerateMesh();
+
+    CleanUp();
+
     /*
     for(int cube_i = 0; cube_i < cubes_.Count; ++cube_i)
     {
@@ -224,16 +226,16 @@ public class WorldGenerator : MonoBehaviour
       debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][1]], vertex_position_[cubes_[cube_i][5]]));
       debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][2]], vertex_position_[cubes_[cube_i][6]]));
       debug_lines_.Add(new Tuple<Vector3, Vector3>(vertex_position_[cubes_[cube_i][3]], vertex_position_[cubes_[cube_i][7]]));
-    } */
+    }
 
     for(int i = 0; i < vertex_position_.Count; ++i)
     {
       GameObject point = Instantiate(debug_point_, vertex_position_[i], Quaternion.identity);
       point.name = vertex_value_[i].ToString();
-      Material material = new Material(default_material_);
+      Material material = new Material(debug_default_material_);
       material.color = Color.HSVToRGB(0.0f, 0.0f, Mathf.Clamp(vertex_value_[i] / value_amplitude_, -1.0f, 1.0f));
       point.GetComponent<MeshRenderer>().material = material;
-    }
+    } */
 
     Debug.Log("Generation time: " + (Time.realtimeSinceStartup - start_time).ToString());
   }
@@ -342,7 +344,7 @@ public class WorldGenerator : MonoBehaviour
 
       // Add quads
       quads_.Add(new List<Vector3Int>(new[]{line.Item1, line_middle_1, triangle_middle, line_middle_2}));
-      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_1, triangle_middle, line_middle_3}));
+      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_3, triangle_middle, line_middle_1}));
       quads_.Add(new List<Vector3Int>(new[]{common_neighbor, line_middle_2, triangle_middle, line_middle_3}));
     }
   }
@@ -369,8 +371,8 @@ public class WorldGenerator : MonoBehaviour
 
       // Add quads
       quads_.Add(new List<Vector3Int>(new[]{line.Item1, line_middle_1, quad_middle, line_middle_2}));
-      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_3, quad_middle, line_middle_4}));
-      quads_.Add(new List<Vector3Int>(new[]{common_neighbors.Item1, line_middle_1, quad_middle, line_middle_3}));
+      quads_.Add(new List<Vector3Int>(new[]{line.Item2, line_middle_4, quad_middle, line_middle_3}));
+      quads_.Add(new List<Vector3Int>(new[]{common_neighbors.Item1, line_middle_3, quad_middle, line_middle_1}));
       quads_.Add(new List<Vector3Int>(new[]{common_neighbors.Item2, line_middle_2, quad_middle, line_middle_4}));
     }
   }
@@ -382,8 +384,7 @@ public class WorldGenerator : MonoBehaviour
     // We sort it to be able to do binary search
     Array.Sort(keys, new Vector3IntComparer());
 
-    // Here we add our offset of start position
-    vertex_position_ = new List<Vector3>(keys.Select(key => { return IntToFloatVector(key) + start_position_.position; }));
+    vertex_position_ = new List<Vector3>(keys.Select(key => { return IntToFloatVector(key); }));
     vertex_neighbors_ = new List<List<int>>(vertex_position_.Count);
     cubes_ = new List<List<int>>(quads_.Count);
 
@@ -523,6 +524,62 @@ public class WorldGenerator : MonoBehaviour
                                       output, noise_settings);
 
     vertex_value_ = new List<float>(output);
+  }
+
+  private void GenerateMesh()
+  {
+    mesh_ = new Mesh();
+
+    List<Vector3> verts = new List<Vector3>();
+    List<int> inds = new List<int>();
+    Dictionary<Vector3Int, int> known_verts = new Dictionary<Vector3Int, int>();
+
+    for(int cube_i = 0; cube_i < cubes_.Count; ++cube_i)
+    {
+      int iso_value = CalculateIsoValue(cubes_[cube_i]);
+      
+      for(int inds_i = 0; MarchingCubesLookup.kTriangles[iso_value][inds_i] != -1; ++inds_i)
+      {
+        // Too many arrays...
+        int vertex_index_1 = cubes_[cube_i][MarchingCubesLookup.kEdgeToVertex[MarchingCubesLookup.kTriangles[iso_value][inds_i]][0]];
+        int vertex_index_2 = cubes_[cube_i][MarchingCubesLookup.kEdgeToVertex[MarchingCubesLookup.kTriangles[iso_value][inds_i]][1]];
+        Vector3 edge_middle = Vector3.Lerp(vertex_position_[vertex_index_1],
+                                           vertex_position_[vertex_index_2],
+                                           Mathf.InverseLerp(vertex_value_[vertex_index_1], vertex_value_[vertex_index_2], mesh_solid_trashhold_));
+        
+        int known_index;
+        if(known_verts.TryGetValue(FloatToIntVector(edge_middle), out known_index))
+        {
+          inds.Add(known_index);
+          continue;
+        }
+
+        verts.Add(edge_middle);
+        known_verts.Add(FloatToIntVector(edge_middle), verts.Count - 1);
+        inds.Add(verts.Count - 1);
+      }
+    }
+
+
+    mesh_.SetVertices(verts);
+    mesh_.SetIndices(inds, MeshTopology.Triangles, 0);
+    mesh_.RecalculateNormals();
+    mesh_filter_.mesh = mesh_;
+  }
+
+  private int CalculateIsoValue(List<int> inds)
+  {
+    Debug.Assert(inds.Count == 8);
+    int result = 0;
+    for(int i = 0; i < 8; ++i)
+    {
+      if(vertex_value_[inds[i]] > mesh_solid_trashhold_)
+        continue;
+      
+      result |= MarchingCubesLookup.kLocalIndexToBit[i];
+    }
+
+    return result;
   }
 
   // So here go 3 functions that can be replaced by a single one List<Vector3Int> FindCommonNeighbors(...), but I am not sure I want it
